@@ -75,20 +75,6 @@ public class MashupController {
                 }
             }
         }.start();
-
-
-        //hard-coded start-up
-        try {
-            //loadFromFile(new File("C:/Users/elect/Documents/0 - Projects/fwd/AudioEdit/weeps.brk"));
-            mixer = new MashupMixer();
-
-            PrepAudioFile audio = new PrepAudioFile(new File("C:/Users/elect/Documents/0 - Projects/fwd/AudioEdit/Prudence.wav"), createImportListener(), 151);
-            mixer.addSource(audio);
-            mixer.addClip(new MixClip(audio, new BeatTime(8), new BeatTime(16), new BeatTime(0)));
-            redraw();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     private void reset() {

@@ -1,9 +1,10 @@
 package me.fellowhead.audioeditor.corrector;
 
+import me.fellowhead.io.docs.PropHolder;
 import me.fellowhead.io.docs.Property;
 import me.fellowhead.io.docs.Savable;
 
-public class BeatMarker implements Comparable<BeatMarker>, Savable {
+public class BeatMarker extends Savable implements Comparable<BeatMarker> {
     private long samplePos;
     private int beats;
 
@@ -33,14 +34,13 @@ public class BeatMarker implements Comparable<BeatMarker>, Savable {
     }
 
     @Override
-    public Property toProperty(String s) {
-        return new Property(s, new Property("pos", samplePos), new Property("beats", beats));
+    protected PropHolder toProp() {
+        return new PropHolder(new Property("pos", samplePos), new Property("beats", beats));
     }
 
     @Override
-    public void fromProperty(Property property) {
-        //TODO
-        samplePos = property.find("pos").getIntValue();
-        beats = property.find("beats").getIntValue();
+    protected void fromProp(PropHolder propHolder) {
+        samplePos = propHolder.find("pos").getIntValue();
+        beats = propHolder.find("beats").getIntValue();
     }
 }

@@ -85,14 +85,6 @@ public class CorrectorController {
             } catch (NumberFormatException ignored) {
             }
         });
-
-
-        //hard-coded start-up
-//        try {
-//            loadFromFile(new File("C:/Users/elect/Documents/0 - Projects/fwd/AudioEdit/weeps.brk"));
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
     }
 
     private void reset() {
