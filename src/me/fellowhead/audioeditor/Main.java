@@ -17,8 +17,8 @@ public class Main extends Application {
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        startStuff(primaryStage,"corrector/markereditor.fxml","Tempo Corrector").setOnKeyPressed(event -> CorrectorController.instance.handleKey(event));
-        //startStuff(primaryStage,"mashup/mashupeditor.fxml","Mashup Mixer").setOnKeyPressed(event -> MashupController.instance.handleKey(event));
+        //startStuff(primaryStage,"corrector/markereditor.fxml","Tempo Corrector").setOnKeyPressed(event -> CorrectorController.instance.handleKey(event));
+        startStuff(primaryStage,"mashup/mashupeditor.fxml","Mashup Mixer").setOnKeyPressed(event -> MashupController.instance.handleKey(event));
     }
 
     private Scene startStuff(Stage stage, String resource, String title) throws IOException {

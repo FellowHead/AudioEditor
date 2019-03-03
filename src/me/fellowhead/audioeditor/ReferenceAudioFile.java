@@ -42,6 +42,7 @@ public class ReferenceAudioFile extends AudioFile {
     private void initFile(AudioInputStream stream, AudioIOListener listener) {
         System.out.println("Reading from file...");
         this.sampleRate = stream.getFormat().getSampleRate();
+        //set sample rate
         this.bytesPerSmp = stream.getFormat().getSampleSizeInBits() / 8;
         Task task = createImportWorker(stream);
         listener.taskCreated(task);

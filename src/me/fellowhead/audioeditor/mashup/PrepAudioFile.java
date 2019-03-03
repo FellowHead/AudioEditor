@@ -21,5 +21,6 @@ public class PrepAudioFile extends ReferenceAudioFile {
 
     public PrepAudioFile(File file, AudioIOListener listener, double bpm) {
         super(file, listener);
+        this.bpm = bpm;
     }
 }

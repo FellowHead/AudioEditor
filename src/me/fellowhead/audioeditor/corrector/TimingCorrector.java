@@ -264,7 +264,7 @@ public class TimingCorrector {
         }
 
         for (int i = 0; i < out.length; i++) {
-            out[i] = (byte)(0.5 * data[i + off] * 127);
+            out[i] = (byte)(data[i + off] * 127);
         }
         return out;
     }
