@@ -10,9 +10,7 @@ import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
-import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
-import javafx.scene.text.TextAlignment;
 import javafx.stage.FileChooser;
 import me.fellowhead.audioeditor.*;
 import me.fellowhead.io.docs.Document;
@@ -30,16 +28,14 @@ public class MashupController {
     @FXML
     private Canvas canvas;
 
-    private MashupMixer mixer;
+    private MashupMixer mixer = new MashupMixer();
 
-    private float zoom = 5000;
-    private int cursor = 0;
-    private int scrollPos = 0;
+    private double beatWidth;
+    private double cursor = 0; // in beats
+    private double scrollPos = 0; // in beats
     private int ghost = 0;
     private boolean playing = false;
     private long offLul = 0;
-    private boolean doRedraw = false;
-    private boolean canRedraw = false;
     private ArrayList<MixClip> selected = new ArrayList<>();
 
     public static MashupController instance;
@@ -47,38 +43,77 @@ public class MashupController {
     private final int buffer = 50000;
     private Thread thread;
 
+    private VisualArea mixingArea;
+
     public void initialize() {
         instance = this;
-
-        Pane parent = (Pane) canvas.getParent();
-        canvas.widthProperty().bind(parent.widthProperty());
-        canvas.heightProperty().bind(parent.heightProperty());
-
-        canvas.widthProperty().addListener((observableValue, number, t1) -> redraw());
-        canvas.heightProperty().addListener((observableValue, number, t1) -> redraw());
 
         new AnimationTimer() {
             @Override
             public void handle(long now) {
                 if (sdl != null && sdl.isRunning()) {
                     ghost = (int) (sdl.getFramePosition() + offLul);
-                    redraw();
+                    mixingArea.redraw();
 
                     if (ghost >= mixer.getLength()) {
                         setPlaying(false);
                     }
                 }
-
-                if (doRedraw && canRedraw) {
-                    doRedraw = false;
-                    actuallyRender();
-                }
             }
         }.start();
+
+        mixingArea = new VisualArea(canvas) {
+            @Override
+            protected void onMouse(MouseEvent event) {
+
+            }
+
+            @Override
+            protected void render(GraphicsContext g) {
+                if (mixer == null) {
+                    return;
+                }
+
+                double scroll = getScrollCentered();
+
+                g.setFill(Color.LIGHTSLATEGRAY);
+                g.fillRect(0,0,canvas.getWidth(), canvas.getHeight()); // paint the background
+
+                double trackHeight = 50;
+
+                g.setStroke(new Color(1,1,1,0.4));
+                g.setLineWidth(1);
+                for (int i = 0; i < 128; i++) { //TODO calculate actual needed iterations
+                    double x = (i - scroll) * beatWidth;
+                    g.strokeLine(x,0, x, canvas.getHeight());
+                }
+
+                g.setFill(Color.INDIANRED);
+
+                int i = 0;
+                for (MixClip clip : mixer.getClips()) {
+                    g.setFill(Color.hsb(30 * i++, 1, 0.9));
+                    g.fillRect((clip.getStartInTimeline().beats - scroll) * beatWidth, mixer.getClipTrack(clip) * trackHeight, clip.getLength().beats * beatWidth, trackHeight);
+                }
+
+                g.setStroke(Color.BLACK);
+                g.setLineWidth(1);
+                g.strokeLine((cursor - scroll) * beatWidth,0,(cursor - scroll) * beatWidth, canvas.getHeight());
+
+                g.setFill(Color.PAPAYAWHIP);
+                g.fillText(scrollPos + " / centered: " + getScrollCentered() + " | " + cursor, 5, 40);
+
+//        if (isPlaying() && ghost >= 0) {
+//            g.setStroke(Color.GREENYELLOW);
+//            g.setLineWidth(2);
+//            g.strokeLine((ghost - scroll) * beatWidth,0,(ghost - scroll) * beatWidth, canvas.getHeight());
+//        }
+            }
+        };
     }
 
     private void reset() {
-        zoom = 5000;
+        beatWidth = 100;
         cursor = 0;
         scrollPos = 0;
         ghost = 0;
@@ -105,15 +140,15 @@ public class MashupController {
     }
 
     private AudioIOListener createImportListener() {
-        canRedraw = false;
+        mixingArea.setRenderable(false);
         return task -> {
             bindProgressBar(task);
             task.setOnSucceeded(event -> {
                 System.out.println("Loaded");
                 unbindProgressBar();
-                canRedraw = true;
+                mixingArea.setRenderable(true);
                 reset();
-                redraw();
+                mixingArea.redraw();
             });
         };
     }
@@ -127,12 +162,9 @@ public class MashupController {
         Platform.runLater(() -> progressBar.progressProperty().bind(task.progressProperty()));
     }
 
-    private void setZoom(float zoom) {
-        if (this.zoom <= 200) {
-            zoom = this.zoom + (zoom - this.zoom) * 0.1f;
-        }
-        this.zoom = zoom;
-        redraw();
+    private void setBeatWidth(double beatWidth) {
+        this.beatWidth = beatWidth;
+        mixingArea.redraw();
     }
 
     private void saveToFile(File file) throws IOException {
@@ -168,7 +200,7 @@ public class MashupController {
 
     private void loadDialog() {
         FileChooser chooser = new FileChooser();
-        chooser.getExtensionFilters().setAll(new FileChooser.ExtensionFilter("BeatMarker file", "*.schmup")); //TODO
+        chooser.getExtensionFilters().setAll(new FileChooser.ExtensionFilter("BeatMarker file", "*.schmup")); //TODO loading a file
         File file = chooser.showOpenDialog(canvas.getScene().getWindow());
         if (file != null) {
             try {
@@ -201,19 +233,9 @@ public class MashupController {
         } else {
             switch (key.getCode()) {
                 case PLUS:
-                    setZoom(zoom - 100); break;
+                    setBeatWidth(beatWidth + 1); break;
                 case MINUS:
-                    setZoom(zoom + 100); break;
-                case D:
-                    setCursor((int) (cursor + zoom), false);
-                    restartPlaying(50);
-                    break;
-                case A:
-                    setCursor((int) (cursor - zoom), false);
-                    restartPlaying(50);
-                    break;
-                case S:
-                    restartPlaying(250); break;
+                    setBeatWidth(beatWidth - 1); break;
                 case ENTER:
                     if (playing && ghost >= 0) {
                         setCursor(ghost, false);
@@ -222,31 +244,16 @@ public class MashupController {
                 case SPACE:
                     setPlaying(!playing); break;
 //                case M:
-//                    addMarker(cursor); break; TODO
+//                    addMarker(cursor); break; TODO allow user to add a clip
                 case RIGHT:
-                    setScrollPos((int) (getScroll() + zoom * 15)); break;
+                    setScrollPos(scrollPos + 1); break;
                 case LEFT:
-                    setScrollPos((int) (getScroll() - zoom * 15)); break;
+                    setScrollPos(scrollPos - 1); break;
             }
         }
     }
 
-    private void restartPlaying(long ms) {
-        setPlaying(false);
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        setPlaying(true);
-    }
-
-    private void foc() {
-        canvas.requestFocus();
-        canvas.setFocusTraversable(false);
-    }
-
-//    private void select(BeatMarker marker) { TODO
+//    private void select(BeatMarker marker) { TODO select clips
 //        selected = marker;
 //        if (selected != null) {
 //            fieldBeats.setText("" + mixer.getRelativeBeats(selected));
@@ -269,7 +276,7 @@ public class MashupController {
             if (thread != null) {
                 thread.interrupt();
             }
-//            thread = new Thread(() -> { TODO
+//            thread = new Thread(() -> { TODO play audio
 //                offLul = -sdl.getLongFramePosition() + cursor;
 //                final byte[] data = mixer.getByteData(cursor);
 //                sdl.start();
@@ -286,7 +293,7 @@ public class MashupController {
 //            thread.start();
         } else {
             ghost = -1;
-            redraw();
+            mixingArea.redraw();
 
             if (thread != null) {
                 thread.interrupt();
@@ -301,81 +308,13 @@ public class MashupController {
         }
     }
 
-    private int getScroll() {
-        return (int) (((this.scrollPos / zoom) - canvas.getWidth() * 0.5) * zoom);
+    private double getScrollCentered() {
+        return ((this.scrollPos * beatWidth) - canvas.getWidth() * 0.5) / beatWidth;
     }
 
-    private void setScroll(int scroll) {
-        scrollPos = (int) (((scroll / zoom) + canvas.getWidth() * 0.5) * zoom);
-    }
-
-    private void actuallyRender() {
-        doRedraw = false;
-        if (mixer == null) {
-            return;
-        }
-        GraphicsContext g = canvas.getGraphicsContext2D();
-
-        int scroll = getScroll();
-
-        int start = (int)(scroll - zoom * canvas.getWidth());
-        int end = (int)(scroll + zoom * canvas.getWidth());
-
-        int x1 = (int) ((start - scroll) / zoom);
-        int x2 = (int) ((end - scroll) / zoom);
-
-        g.setFill(Color.LIGHTSLATEGRAY);
-        g.fillRect(x1,0,x2 - x1, canvas.getHeight());
-
-        double trackHeight = 50;
-        double beatWidth = zoom;
-        for (MixClip clip : mixer.getClips()) {
-            g.setFill(Color.INDIANRED);
-            g.fillRect(clip.getStartInTimeline().beats * beatWidth + scroll, 0, x2 - x1, trackHeight);
-        }
-
-//        g.setStroke(Color.ROYALBLUE);
-//        g.setLineWidth(1);
-//
-//        for (int i = x1; i < x2; i += 1) {
-//            int last = (int) ((i-1)*zoom + scroll);
-//            int index = (int) (i*zoom + scroll);
-//            float vol = 0;
-//            for (int j = last; j < index; j++) {
-//                if (j >= 0 && j < audio.getLength() && Math.abs(audio.getData()[0][j]) > vol) {
-//                    vol = Math.abs(audio.getData()[0][j]);
-//                }
-//            }
-//            //vol = vol / (index - last);
-//            double y = vol;
-//            g.strokeLine((double) i, canvas.getHeight()*0.5 * (1+y), (double) i, canvas.getHeight()*0.5 * (1-y));
-//        }
-//
-        g.setStroke(new Color(1,1,1,0.4));
-        g.setLineWidth(1);
-        for (long bPos : mixer.getClickTrack(scroll)) {
-            double x = bPos / zoom;
-            g.strokeLine(x,0, x, canvas.getHeight());
-        }
-
-        g.setStroke(Color.BLACK);
-        g.setLineWidth(1);
-        g.strokeLine((cursor - scroll) / zoom,0,(cursor - scroll) / zoom, canvas.getHeight());
-
-        if (isPlaying() && ghost >= 0) {
-            g.setStroke(Color.GREENYELLOW);
-            g.setLineWidth(2);
-            g.strokeLine((ghost - scroll) / zoom,0,(ghost - scroll) / zoom, canvas.getHeight());
-        }
-    }
-
-    private void redraw() {
-        doRedraw = true;
-    }
-
-    private void setScrollPos(int scrollPos) {
-        setScroll(scrollPos);
-        redraw();
+    private void setScrollPos(double scrollPos) {
+        this.scrollPos = scrollPos;
+        mixingArea.redraw();
     }
 
     public void exportFile() {
@@ -383,7 +322,7 @@ public class MashupController {
         chooser.getExtensionFilters().setAll(new FileChooser.ExtensionFilter("wav only lul", "*.wav"));
         File file = chooser.showSaveDialog(canvas.getScene().getWindow());
         if (file != null) {
-//            double bpm = mixer.calcAverageBpm(); TODO
+//            double bpm = mixer.calcAverageBpm(); TODO export the mash up
 //            System.out.println("Average bpm: " + bpm);
 //            bpm = Math.round(bpm * 1) / 1;
 //            System.out.println("Exporting at " + bpm);
@@ -412,17 +351,19 @@ public class MashupController {
         if (file != null) {
             PrepAudioFile audio = new PrepAudioFile(file, createImportListener(), 130);
             mixer.addSource(audio);
+            mixer.addClip(new MixClip(audio, new BeatTime(0), new BeatTime(8), new BeatTime(0)));
+            mixer.addClip(new MixClip(audio, new BeatTime(8), new BeatTime(4), new BeatTime(8)));
         }
     }
 
-    private void setCursor(int cursor, boolean fitToMarker) {
-        int lastCursor = this.cursor;
+    private void setCursor(double cursor, boolean fitToMarker) {
+        double lastCursor = this.cursor;
 
         if (fitToMarker && mixer != null) {
-//           BeatMarker found = null; TODO
+//           BeatMarker found = null; TODO fit cursor to clip
 //            for (BeatMarker marker : mixer.getMarkers()) {
 //                long lol = Math.abs(marker.getSamplePos() - cursor);
-//                if (lol < zoom * 25) {
+//                if (lol < beatWidth * 25) {
 //                    if (found == null || lol < Math.abs(found.getSamplePos() - cursor)) {
 //                        found = marker;
 //                    }
@@ -433,36 +374,17 @@ public class MashupController {
 //            }
             //select(found);
         }
-        cursor = Math.max(cursor, 0);
+        //cursor = Math.max(cursor, 0);
         this.cursor = cursor;
 
-        double border = 0;
-        double x = (double) (cursor - getScroll()) / zoom;
-        if (cursor < lastCursor && x < border) {
-            setScrollPos(cursor - (int)(border * zoom));
-        } else if (cursor > lastCursor && x > canvas.getWidth() - border) {
-            setScrollPos(cursor - (int)((canvas.getWidth() - border) * zoom));
-        }
+//        double border = 0; //TODO border scroll
+//        double x = (double) (cursor - getScrollCentered()) * beatWidth;
+//        if (cursor < lastCursor && x < border) {
+//            setScrollPos(cursor - (int)(border / beatWidth));
+//        } else if (cursor > lastCursor && x > canvas.getWidth() - border) {
+//            setScrollPos(cursor - (int)((canvas.getWidth() - border) / beatWidth));
+//        }
 
-        redraw();
-    }
-
-    public void mouse(MouseEvent mouseEvent) {
-        onMouse(mouseEvent);
-        foc();
-    }
-
-    private void onMouse(MouseEvent event) {
-        if (event.isControlDown() && selected != null) {
-            setCursor((int) (event.getX() * zoom + getScroll()), false);
-            //selected.setSamplePos(cursor); TODO
-            redraw();
-        } else {
-            setCursor((int) (event.getX() * zoom + getScroll()), !event.isAltDown());
-        }
-    }
-
-    public void mouseMove(MouseEvent mouseEvent) {
-        onMouse(mouseEvent);
+        mixingArea.redraw();
     }
 }

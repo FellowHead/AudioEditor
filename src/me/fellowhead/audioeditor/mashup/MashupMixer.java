@@ -40,6 +40,10 @@ public class MashupMixer {
         return ch;
     }
 
+    public int getClipTrack(MixClip clip) {
+        return audioSources.indexOf(clip.getAudio());
+    }
+
     public MixClip[] getClips() {
         return clips.toArray(new MixClip[0]);
     }

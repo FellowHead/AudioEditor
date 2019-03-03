@@ -37,6 +37,10 @@ public class MixClip {
         return new AdvancedTime(start.beats + length.beats, audio.getBpm(), audio.getSampleRate());
     }
 
+    public PrepAudioFile getAudio() {
+        return audio;
+    }
+
     public float[][] cutRelevant() {
         float[][] out = new float[audio.getChannels()][(int) length.absolute()];
         for (int i = 0; i < out[0].length; i++) {

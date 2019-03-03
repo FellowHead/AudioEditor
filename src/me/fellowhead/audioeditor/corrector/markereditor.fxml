@@ -45,7 +45,7 @@
             </AnchorPane>
             <Pane HBox.hgrow="ALWAYS">
                <children>
-                  <Canvas fx:id="canvas" height="200.0" onMouseDragged="#mouseMove" onMousePressed="#mouse" width="200.0">
+                  <Canvas fx:id="canvas" height="200.0" width="200.0">
                      <cursor>
                         <Cursor fx:constant="DEFAULT" />
                      </cursor>

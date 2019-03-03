@@ -28,6 +28,7 @@ public class CorrectorController {
     private TextField fieldBeats;
     @FXML
     private Canvas canvas;
+    private VisualArea area;
 
     private TimingCorrector corrector;
 
@@ -38,8 +39,6 @@ public class CorrectorController {
     private boolean playing = false;
     private long offLul = 0;
     private BeatMarker selected = null;
-    private boolean doRedraw = false;
-    private boolean canRedraw = false;
 
     public static CorrectorController instance;
     private static SourceDataLine sdl;
@@ -49,28 +48,16 @@ public class CorrectorController {
     public void initialize() {
         instance = this;
 
-        Pane parent = (Pane) canvas.getParent();
-        canvas.widthProperty().bind(parent.widthProperty());
-        canvas.heightProperty().bind(parent.heightProperty());
-
-        canvas.widthProperty().addListener((observableValue, number, t1) -> redraw());
-        canvas.heightProperty().addListener((observableValue, number, t1) -> redraw());
-
         new AnimationTimer() {
             @Override
             public void handle(long now) {
                 if (sdl != null && sdl.isRunning()) {
                     ghost = (int) (sdl.getFramePosition() + offLul);
-                    redraw();
+                    area.redraw();
 
                     if (ghost >= corrector.audio.getLength()) {
                         setPlaying(false);
                     }
-                }
-
-                if (doRedraw && canRedraw) {
-                    doRedraw = false;
-                    actuallyRender();
                 }
             }
         }.start();
@@ -80,11 +67,96 @@ public class CorrectorController {
                 int v = Integer.parseInt(newValue);
                 if (selected != null) {
                     corrector.setRelativeBeats(selected, v);
-                    redraw();
+                    area.redraw();
                 }
             } catch (NumberFormatException ignored) {
             }
         });
+
+        area = new VisualArea(canvas) {
+            @Override
+            protected void onMouse(MouseEvent event) {
+                if (event.isControlDown() && selected != null) {
+                    setCursor((int) (event.getX() * zoom + getScroll()), false);
+                    selected.setSamplePos(cursor);
+                    corrector.sort();
+                    redraw();
+                } else {
+                    setCursor((int) (event.getX() * zoom + getScroll()), !event.isAltDown());
+                }
+            }
+
+            @Override
+            protected void render(GraphicsContext g) {
+                if (corrector == null) {
+                    return;
+                }
+
+                int scroll = getScroll();
+
+                int start = (int)(scroll - zoom * canvas.getWidth());
+                int end = (int)(scroll + zoom * canvas.getWidth());
+                AudioFile audio = corrector.audio;
+
+                int x1 = (int) ((start - scroll) / zoom);
+                int x2 = (int) ((end - scroll) / zoom);
+
+                g.setFill(Color.LIGHTSLATEGRAY);
+                g.fillRect(x1,0,x2 - x1, canvas.getHeight());
+
+                g.setStroke(Color.DODGERBLUE);
+                g.setLineWidth(1);
+
+                for (int i = x1; i < x2; i += 1) {
+                    int last = (int) ((i-1)*zoom + scroll);
+                    int index = (int) (i*zoom + scroll);
+                    float vol = 0;
+                    for (int j = last; j < index; j++) {
+                        if (j >= 0 && j < audio.getLength() && Math.abs(audio.getData()[0][j]) > vol) {
+                            vol = Math.abs(audio.getData()[0][j]);
+                        }
+                    }
+                    //vol = vol / (index - last);
+                    double y = vol;
+                    g.strokeLine((double) i, canvas.getHeight()*0.5 * (1+y), (double) i, canvas.getHeight()*0.5 * (1-y));
+                }
+
+                g.setStroke(new Color(1,1,1,0.4));
+                g.setLineWidth(1);
+                for (long bPos : corrector.getClickTrack(scroll)) {
+                    double x = bPos / zoom;
+                    g.strokeLine(x,0, x, canvas.getHeight());
+                }
+
+                g.setLineWidth(5);
+                for (BeatMarker marker : corrector.getMarkers()) {
+                    g.setStroke((marker == selected) ? Color.DEEPPINK : Color.INDIGO);
+                    double x = (marker.getSamplePos() - scroll) / zoom;
+                    g.strokeLine(x,0,x,canvas.getHeight());
+                }
+
+                g.setStroke(Color.BLACK);
+                g.setLineWidth(1);
+                g.strokeLine((cursor - scroll) / zoom,0,(cursor - scroll) / zoom, canvas.getHeight());
+
+                if (isPlaying() && ghost >= 0) {
+                    g.setStroke(Color.GREENYELLOW);
+                    g.setLineWidth(2);
+                    g.strokeLine((ghost - scroll) / zoom,0,(ghost - scroll) / zoom, canvas.getHeight());
+                }
+
+                g.setFill(Color.WHITE);
+                for (int i = 0; i < corrector.getMarkers().length-1; i++) {
+                    BeatMarker a = corrector.getMarkers()[i];
+                    BeatMarker b = corrector.getMarkers()[i+1];
+                    double x = (a.getSamplePos() + 0.5 * (b.getSamplePos() - a.getSamplePos()) - scroll) / zoom;
+                    g.setTextAlign(TextAlignment.CENTER);
+                    g.fillText((Math.round(TimingCorrector.calcBpm(a, b, corrector.audio.getSampleRate()) * 10) / 10.0) + "", x, 50);
+                    g.setTextAlign(TextAlignment.LEFT);
+                    g.fillText(a.getBeats() + "", (a.getSamplePos() - scroll) / zoom + 5, canvas.getHeight() - 5);
+                }
+            }
+        };
     }
 
     private void reset() {
@@ -115,15 +187,15 @@ public class CorrectorController {
     }
 
     private AudioIOListener createImportListener() {
-        canRedraw = false;
+        area.setRenderable(false);
         return task -> {
             bindProgressBar(task);
             task.setOnSucceeded(event -> {
                 System.out.println("Loaded");
                 unbindProgressBar();
-                canRedraw = true;
+                area.setRenderable(true);
                 reset();
-                redraw();
+                area.redraw();
             });
         };
     }
@@ -142,7 +214,7 @@ public class CorrectorController {
             zoom = this.zoom + (zoom - this.zoom) * 0.1f;
         }
         this.zoom = zoom;
-        redraw();
+        area.redraw();
     }
 
     private void saveToFile(File file) throws IOException {
@@ -255,12 +327,7 @@ public class CorrectorController {
         BeatMarker marker = new BeatMarker(pos);
         corrector.addMarker(marker, true);
         select(marker);
-        redraw();
-    }
-
-    private void foc() {
-        canvas.requestFocus();
-        canvas.setFocusTraversable(false);
+        area.redraw();
     }
 
     private void select(BeatMarker marker) {
@@ -272,7 +339,7 @@ public class CorrectorController {
             fieldBeats.setText("");
             fieldBeats.setDisable(true);
         }
-        redraw();
+        area.redraw();
     }
 
     private boolean isPlaying() {
@@ -303,7 +370,7 @@ public class CorrectorController {
             thread.start();
         } else {
             ghost = -1;
-            redraw();
+            area.redraw();
 
             if (thread != null) {
                 thread.interrupt();
@@ -326,83 +393,9 @@ public class CorrectorController {
         scrollPos = (int) (((scroll / zoom) + canvas.getWidth() * 0.5) * zoom);
     }
 
-    private void actuallyRender() {
-        doRedraw = false;
-        if (corrector == null) {
-            return;
-        }
-        GraphicsContext g = canvas.getGraphicsContext2D();
-
-        int scroll = getScroll();
-
-        int start = (int)(scroll - zoom * canvas.getWidth());
-        int end = (int)(scroll + zoom * canvas.getWidth());
-        AudioFile audio = corrector.audio;
-
-        int x1 = (int) ((start - scroll) / zoom);
-        int x2 = (int) ((end - scroll) / zoom);
-
-        g.setFill(Color.LIGHTSLATEGRAY);
-        g.fillRect(x1,0,x2 - x1, canvas.getHeight());
-
-        g.setStroke(Color.ROYALBLUE);
-        g.setLineWidth(1);
-
-        for (int i = x1; i < x2; i += 1) {
-            int last = (int) ((i-1)*zoom + scroll);
-            int index = (int) (i*zoom + scroll);
-            float vol = 0;
-            for (int j = last; j < index; j++) {
-                if (j >= 0 && j < audio.getLength() && Math.abs(audio.getData()[0][j]) > vol) {
-                    vol = Math.abs(audio.getData()[0][j]);
-                }
-            }
-            //vol = vol / (index - last);
-            double y = vol;
-            g.strokeLine((double) i, canvas.getHeight()*0.5 * (1+y), (double) i, canvas.getHeight()*0.5 * (1-y));
-        }
-
-        g.setStroke(new Color(1,1,1,0.4));
-        g.setLineWidth(1);
-        for (long bPos : corrector.getClickTrack(scroll)) {
-            double x = bPos / zoom;
-            g.strokeLine(x,0, x, canvas.getHeight());
-        }
-
-        g.setLineWidth(5);
-        for (BeatMarker marker : corrector.getMarkers()) {
-            g.setStroke((marker == selected) ? Color.DEEPPINK : Color.INDIGO);
-            double x = (marker.getSamplePos() - scroll) / zoom;
-            g.strokeLine(x,0,x,canvas.getHeight());
-        }
-
-        g.setStroke(Color.BLACK);
-        g.setLineWidth(1);
-        g.strokeLine((cursor - scroll) / zoom,0,(cursor - scroll) / zoom, canvas.getHeight());
-
-        if (isPlaying() && ghost >= 0) {
-            g.setStroke(Color.GREENYELLOW);
-            g.setLineWidth(2);
-            g.strokeLine((ghost - scroll) / zoom,0,(ghost - scroll) / zoom, canvas.getHeight());
-        }
-
-        g.setFill(Color.WHITE);
-        for (int i = 0; i < corrector.getMarkers().length-1; i++) {
-            BeatMarker a = corrector.getMarkers()[i];
-            BeatMarker b = corrector.getMarkers()[i+1];
-            double x = (a.getSamplePos() + 0.5 * (b.getSamplePos() - a.getSamplePos()) - scroll) / zoom;
-            g.setTextAlign(TextAlignment.CENTER);
-            g.fillText((Math.round(TimingCorrector.calcBpm(a, b, corrector.audio.getSampleRate()) * 10) / 10.0) + "", x, 50);
-        }
-    }
-
-    private void redraw() {
-        doRedraw = true;
-    }
-
     private void setScrollPos(int scrollPos) {
         setScroll(scrollPos);
-        redraw();
+        area.redraw();
     }
 
     public void exportFile() {
@@ -471,38 +464,18 @@ public class CorrectorController {
             setScrollPos(cursor - (int)((canvas.getWidth() - border) * zoom));
         }
 
-        redraw();
-    }
-
-    public void mouse(MouseEvent mouseEvent) {
-        onMouse(mouseEvent);
-        foc();
-    }
-
-    private void onMouse(MouseEvent event) {
-        if (event.isControlDown() && selected != null) {
-            setCursor((int) (event.getX() * zoom + getScroll()), false);
-            selected.setSamplePos(cursor);
-            corrector.sort();
-            redraw();
-        } else {
-            setCursor((int) (event.getX() * zoom + getScroll()), !event.isAltDown());
-        }
+        area.redraw();
     }
 
     private void deleteMarker(BeatMarker marker) {
         corrector.removeMarker(marker);
         select(null);
-        redraw();
+        area.redraw();
     }
 
     public void deleteSelected() {
         if (selected != null) {
             deleteMarker(selected);
         }
-    }
-
-    public void mouseMove(MouseEvent mouseEvent) {
-        onMouse(mouseEvent);
     }
 }
