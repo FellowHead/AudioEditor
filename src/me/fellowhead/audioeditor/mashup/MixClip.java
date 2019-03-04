@@ -7,11 +7,11 @@ public class MixClip {
 
     private BeatTime startTl;
 
-    public MixClip(PrepAudioFile audio, BeatTime start, BeatTime length, BeatTime position) {
+    public MixClip(PrepAudioFile audio, BeatTime startFi, BeatTime length, BeatTime startTl) {
         this.audio = audio;
-        this.startFi = start;
+        this.startFi = startFi;
         this.length = length;
-        this.startTl = position;
+        this.startTl = startTl;
     }
 
     public BeatTime getStartInTimeline() {
@@ -38,7 +38,23 @@ public class MixClip {
         return audio;
     }
 
-//    public float[][] cutRelevant() {
+    public void setStartInTimeline(double beats, boolean keepEnd, boolean adjustStartInFile) {
+        double diff = beats - startTl.beats;
+        startTl = new BeatTime(beats);
+        if (keepEnd) {
+            length = new BeatTime(length.beats + diff);
+        }
+        if (adjustStartInFile) {
+            startFi = new BeatTime(startFi.beats + diff);
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "(file: " + startFi + ", timeline: " + startTl + " | length: " + length + ")";
+    }
+
+    //    public float[][] cutRelevant() {
 //        float[][] out = new float[audio.getChannels()][(int) length.];
 //        for (int i = 0; i < out[0].length; i++) {
 //            for (int ch = 0; ch < out.length; ch++) {

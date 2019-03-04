@@ -62,44 +62,58 @@ public class MashupMixer {
         return clips.toArray(new MixClip[0]);
     }
 
-    public byte[] getByteData(double start) { //TODO multiple tracks and such
+    public byte[] getByteData(double start) { //TODO add timestretching on bpm differences
         AdvancedTime needed = new AdvancedTime(getLength().beats - start, bpm, sampleRate);
         final float[] data = new float[(int) (needed.absolute() * getChannels())];
 
         for (MixClip clip : clips) {
             if (clip.getEndInTimeline().beats > start) {
-                final int off = (int) new AdvancedTime((start - clip.getStartInTimeline().beats) + clip.getStartInFile().beats, clip.getAudio().getBpm(), clip.getAudio().getSampleRate()).absolute();
+                AdvancedTime clipNeeded = new AdvancedTime(Math.min(clip.getLength().beats, clip.getEndInTimeline().beats - start), bpm, sampleRate);
+                final int writeLength = (int) clipNeeded.absolute();
+
+                final int startInOutArray = Math.max(0, (int) new AdvancedTime(clip.getStartInTimeline().beats - start, bpm, sampleRate).absolute());
+
+                final int startInFileArray = (int) new AdvancedTime(clip.getStartInFile().beats, clip.getAudio().getBpm(), clip.getAudio().getSampleRate()).absolute();
+                final int shiftedStartInFileArray = Math.max(0, (int) (startInFileArray - new AdvancedTime(clip.getStartInTimeline().beats - start, clip.getAudio().getBpm(), clip.getAudio().getSampleRate()).absolute()));
+
                 float[][] src = clip.getAudio().getData();
-                for (int i = 0; i < clip.getLength().advanced(bpm, sampleRate).absolute(); i++) {
+                for (int i = 0; i < writeLength; i++) {
                     for (int ch = 0; ch < getChannels(); ch++) {
-                        data[(int) ((clip.getStartInTimeline().advanced(bpm, sampleRate).absolute() + i) * getChannels() + ch)] += src[ch % clip.getAudio().getChannels()][i + off];
-                    }
-                }
-            }
-        }
-
-        final Random rnd = new Random();
-
-        final int off = (int) new AdvancedTime(start, bpm, sampleRate).absolute();
-        final int offInArr = off * getChannels();
-
-        for (long beatPos : getClickTrack(off)) {
-            if (beatPos >= 0 && beatPos+offInArr+100*getChannels() < data.length) {
-                for (int ch = 0; ch < getChannels(); ch++) {
-                    for (int i = 0; i < 100; i++) {
                         try {
-                            data[(int) (getChannels()*beatPos + offInArr+i + ch)] += (rnd.nextFloat() - 0.5) * 2;
+                            data[(startInOutArray + i) * getChannels() + ch]
+                                    += src[ch % clip.getAudio().getChannels()][shiftedStartInFileArray + i];
                         } catch (Exception e) {
                             e.printStackTrace();
+                            System.out.println(clip + " | " + start + "");
+                            return new byte[0];
                         }
                     }
                 }
             }
         }
 
-        final byte[] out = new byte[(int) (needed.absolute() * getChannels())];
+//        final Random rnd = new Random();
+//
+//        final int off = (int) new AdvancedTime(start, bpm, sampleRate).absolute();
+//        final int offInArr = off * getChannels();
+//
+//        for (long beatPos : getClickTrack(off)) {
+//            if (beatPos >= 0 && getChannels()*(beatPos+100)+offInArr < data.length) {
+//                for (int ch = 0; ch < getChannels(); ch++) {
+//                    for (int i = 0; i < 100; i++) {
+//                        try {
+//                            data[(int) (getChannels()*beatPos + offInArr+i + ch)] += (rnd.nextFloat() - 0.5) * 2;
+//                        } catch (Exception e) {
+//                            e.printStackTrace();
+//                        }
+//                    }
+//                }
+//            }
+//        }
+
+        final byte[] out = new byte[data.length];
         for (int i = 0; i < out.length; i++) {
-            out[i] = (byte)(data[i + off] * 127);
+            out[i] = (byte)(data[i] * 127);
         }
         return out;
     }
