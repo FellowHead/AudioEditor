@@ -44,7 +44,7 @@ public class MashupController {
         instance = this;
 
         timeline = new MashupTimeline(canvas) {
-            void setCursor(double cursor, boolean fitToMarker) {
+            void setCursor(double cursor) {
                 cursor = Math.max(cursor, 0);
                 this.cursor = cursor;
 
@@ -66,7 +66,7 @@ public class MashupController {
                             setBeatWidth(beatWidth - 1); break;
                         case ENTER:
                             if (playing && ghost >= 0) {
-                                setCursor(ghost, false);
+                                setCursor(ghost);
                             }
                             setPlaying(!playing); break;
                         case SPACE:
@@ -114,7 +114,12 @@ public class MashupController {
 
             @Override
             protected void onMouse(MouseEvent event) {
-                setCursor(event.getX() / beatWidth + getScrollCentered(), !event.isAltDown());
+                double beats = event.getX() / beatWidth + getScrollCentered();
+                if (event.isControlDown() || Math.abs(beats % 1.0 - 0.5) < 0.4) {
+                    setCursor(beats);
+                } else {
+                    setCursor(Math.round(beats));
+                }
             }
 
             @Override

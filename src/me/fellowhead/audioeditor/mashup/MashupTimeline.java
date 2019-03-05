@@ -10,7 +10,7 @@ abstract class MashupTimeline extends VisualArea {
     double cursor;
     double scrollPos;
     double ghost;
-    protected double beatWidth;
+    double beatWidth;
 
 
     MashupTimeline(Canvas canvas) {
