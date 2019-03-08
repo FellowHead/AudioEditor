@@ -54,6 +54,15 @@ public class MashupMixer {
         return ch;
     }
 
+    public MixClip getClip(double beats, int track) {
+        for (MixClip clip : clips) {
+            if (getClipTrack(clip) == track && clip.getStartInTimeline().beats < beats && clip.getEndInTimeline().beats > beats) {
+                return clip;
+            }
+        }
+        return null;
+    }
+
     public int getClipTrack(MixClip clip) {
         return audioSources.indexOf(clip.getAudio());
     }

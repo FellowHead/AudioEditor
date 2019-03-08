@@ -231,6 +231,10 @@ public class AudioUtility {
     }
 
     public static void writeToFile(AudioFile audio, AudioFormat format, File file) {
+        if (!file.getName().endsWith(".wav")) {
+            file = new File(file.getPath() + ".wav");
+        }
+
         byte[] data = audio.getByteData(format.getSampleSizeInBits() / 8);
 
         InputStream b_in = new ByteArrayInputStream(data);

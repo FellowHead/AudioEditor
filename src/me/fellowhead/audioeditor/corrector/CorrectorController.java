@@ -28,7 +28,7 @@ public class CorrectorController {
     private Canvas canvas;
     private CorrectorVisuals timeline;
 
-    private TimingCorrector corrector;
+    private TempoCorrector corrector;
 
     private boolean playing = false;
     private long offLul = 0;
@@ -95,14 +95,14 @@ public class CorrectorController {
                     ghost = (int) (sdl.getFramePosition() + offLul);
                     redraw();
 
-                    if (ghost >= corrector.audio.getLength()) {
+                    if (ghost >= corrector.audio.getLengthInSamples()) {
                         setPlaying(false);
                     }
                 }
             }
 
             @Override
-            protected void onMouse(MouseEvent event) {
+            protected void onMouse(MouseEvent event, int type) {
                 if (event.isControlDown() && selected != null) {
                     setCursor((int) (event.getX() * zoom + getScroll()), false);
                     selected.setSamplePos(cursor);
@@ -192,7 +192,7 @@ public class CorrectorController {
                     int index = (int) (i*zoom + scroll);
                     float vol = 0;
                     for (int j = last; j < index; j++) {
-                        if (j >= 0 && j < audio.getLength() && Math.abs(audio.getData()[0][j]) > vol) {
+                        if (j >= 0 && j < audio.getLengthInSamples() && Math.abs(audio.getData()[0][j]) > vol) {
                             vol = Math.abs(audio.getData()[0][j]);
                         }
                     }
@@ -231,7 +231,7 @@ public class CorrectorController {
                     BeatMarker b = corrector.getMarkers()[i+1];
                     double x = (a.getSamplePos() + 0.5 * (b.getSamplePos() - a.getSamplePos()) - scroll) / zoom;
                     g.setTextAlign(TextAlignment.CENTER);
-                    g.fillText((Math.round(TimingCorrector.calcBpm(a, b, corrector.audio.getSampleRate()) * 10) / 10.0) + "", x, 50);
+                    g.fillText((Math.round(TempoCorrector.calcBpm(a, b, corrector.audio.getSampleRate()) * 10) / 10.0) + "", x, 50);
                     g.setTextAlign(TextAlignment.LEFT);
                     g.fillText(a.getBeats() + "", (a.getSamplePos() - scroll) / zoom + 5, canvas.getHeight() - 5);
                 }
@@ -290,6 +290,9 @@ public class CorrectorController {
     }
 
     private void saveToFile(File file) throws IOException {
+        if (!file.getName().endsWith(".brk")) {
+            file = new File(file.getPath() + ".brk");
+        }
         System.out.println("Saving...");
 
         Document doc = new Document();
@@ -316,7 +319,7 @@ public class CorrectorController {
         System.out.println("Loading...");
 
         Document doc = Document.read(file);
-        corrector = new TimingCorrector(null);
+        corrector = new TempoCorrector(null);
         corrector.fromProperty(doc.find("corrector"), createImportListener());
     }
 
@@ -429,9 +432,9 @@ public class CorrectorController {
         if (file != null) {
             double bpm = corrector.calcAverageBpm();
             System.out.println("Average bpm: " + bpm);
-            bpm = Math.round(bpm * 1) / 1;
+            bpm = Math.round(bpm);
             System.out.println("Exporting at " + bpm);
-            corrector.createCorrectedAudioFx(bpm, new TimingCorrector.CorrectionListener() {
+            corrector.createCorrectedAudioFx(bpm,true, new TempoCorrector.CorrectionListener() {
                 @Override
                 public void onCorrected(AudioFile audioFile) {
                     AudioUtility.writeToFile(audioFile, new AudioFormat(corrector.audio.getSampleRate(), corrector.audio.getBytesPerSmp() * 8, audioFile.getChannels(), true, false), file);
@@ -455,7 +458,7 @@ public class CorrectorController {
         File file = chooser.showOpenDialog(canvas.getScene().getWindow());
         if (file != null) {
             ReferenceAudioFile audio = new ReferenceAudioFile(file, createImportListener());
-            corrector = new TimingCorrector(audio);
+            corrector = new TempoCorrector(audio);
         }
     }
 

@@ -15,6 +15,9 @@ public abstract class VisualArea {
     protected double mouseY;
     protected boolean isFocused;
     protected boolean isMouseDown;
+    protected static final int MOUSE_DOWN = 0;
+    protected static final int MOUSE_DRAG = 1;
+    protected static final int MOUSE_UP = 2;
 
     protected abstract void handleKey(KeyEvent key);
 
@@ -36,17 +39,17 @@ public abstract class VisualArea {
 
         canvas.setOnMousePressed(event -> {
             isMouseDown = true;
-            onMouse(event);
-            onMouseDown(event);
+            onMouse(event, MOUSE_DOWN);
             foc();
         });
         canvas.setOnMouseReleased(mouseEvent -> {
             isMouseDown = false;
+            onMouse(mouseEvent, MOUSE_UP);
         });
 
         canvas.setOnMouseDragged(event -> {
             isFocused = true;
-            onMouse(event);
+            onMouse(event, MOUSE_DRAG);
         });
         canvas.setOnMouseMoved(mouseEvent -> {
             isFocused = true;
@@ -96,9 +99,6 @@ public abstract class VisualArea {
     protected void onNextFrame() {
 
     }
-    protected void onMouseDown(MouseEvent event) {
-
-    }
-    protected abstract void onMouse(MouseEvent event);
+    protected abstract void onMouse(MouseEvent event, int type);
     protected abstract void render(GraphicsContext g);
 }

@@ -1,6 +1,5 @@
 package me.fellowhead.audioeditor.mashup;
 
-import javafx.animation.AnimationTimer;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
@@ -33,7 +32,6 @@ public class MashupController {
     private boolean playing = false;
     private double offLul = 0;
 
-    public static MashupController instance;
     private static SourceDataLine sdl;
     private final int buffer = 50000;
     private Thread thread;
@@ -41,8 +39,6 @@ public class MashupController {
     private MashupTimeline timeline;
 
     public void initialize() {
-        instance = this;
-
         timeline = new MashupTimeline(canvas) {
             void setCursor(double cursor) {
                 cursor = Math.max(cursor, 0);
@@ -103,22 +99,39 @@ public class MashupController {
             }
 
             class Selection {
-                final static int TYPE_START = 0;
-                final static int TYPE_END = 1;
-                ArrayList<MixClip> clip = new ArrayList<>();
+                final static int TYPE_DRAG_START = 0;
+                final static int TYPE_DRAG_END = 1;
+                final static int TYPE_DRAG_CLIP = 1;
+                ArrayList<MixClip> clips = new ArrayList<>();
                 int type;
             }
 
-            Selection selection;
+            Selection selection = new Selection();
             final double dragRange = 30;
+            final double trackHeight = 50;
 
             @Override
-            protected void onMouse(MouseEvent event) {
+            protected void onMouse(MouseEvent event, int type) {
                 double beats = event.getX() / beatWidth + getScrollCentered();
-                if (event.isControlDown() || Math.abs(beats % 1.0 - 0.5) < 0.4) {
-                    setCursor(beats);
+                int track = (int) (event.getY() / trackHeight);
+                MixClip clip = mixer.getClip(beats, track);
+                if (clip != null && type == MOUSE_DOWN) {
+                    selection.clips.add(clip);
+                    double start = (clip.getStartInTimeline().beats - getScrollCentered()) * beatWidth;
+                    double end = (clip.getEndInTimeline().beats - getScrollCentered()) * beatWidth;
+                    if (event.getX() < start + dragRange) {
+                        selection.type = Selection.TYPE_DRAG_START;
+                    } else if (event.getX() > end - dragRange) {
+                        selection.type = Selection.TYPE_DRAG_END;
+                    } else {
+                        selection.type = Selection.TYPE_DRAG_CLIP;
+                    }
                 } else {
-                    setCursor(Math.round(beats));
+                    if (event.isControlDown() || Math.abs(beats % 1.0 - 0.5) < 0.4) {
+                        setCursor(beats);
+                    } else {
+                        setCursor(Math.round(beats));
+                    }
                 }
             }
 
@@ -133,8 +146,6 @@ public class MashupController {
                 g.setFill(Color.LIGHTSLATEGRAY);
                 g.fillRect(0, 0, canvas.getWidth(), canvas.getHeight()); // paint the background
 
-                double trackHeight = 50;
-
                 g.setStroke(new Color(1, 1, 1, 0.4));
                 g.setLineWidth(1);
                 for (int i = 0; i < 128; i++) { //TODO calculate actual needed iterations
@@ -146,19 +157,16 @@ public class MashupController {
 
                 int i = 0;
                 for (MixClip clip : mixer.getClips()) {
-                    g.setFill(Color.hsb(30 * i, 1, 0.75));
+                    g.setFill(Color.hsb(30 * i, 1, selection.clips.contains(clip) ? 0.85 : 0.75));
                     double start = (clip.getStartInTimeline().beats - scroll) * beatWidth;
                     double end = (clip.getEndInTimeline().beats - scroll) * beatWidth;
                     double y = mixer.getClipTrack(clip) * trackHeight;
                     g.fillRect(start, y,end - start, trackHeight);
-                    if (isFocused && mouseY > y && mouseY < y + trackHeight) {
-                        g.setFill(Color.hsb(30 * i, 0.75, 1, 0.8));
-                        if (mouseX > start && mouseX < start + dragRange) {
-                            g.fillRect(start, y,dragRange, trackHeight);
-                            if (isMouseDown) {
-                                clip.setStartInTimeline(cursor, true, false);
-                            }
-                        } else if (mouseX > end - dragRange && mouseX < end) {
+                    if (selection.clips.contains(clip)) {
+                        g.setFill(Color.hsb(30 * i, 0.75, 1, 1));
+                        if (selection.type == Selection.TYPE_DRAG_START) {
+                            g.fillRect(start, y, dragRange, trackHeight);
+                        } else if (selection.type == Selection.TYPE_DRAG_END) {
                             g.fillRect(end - dragRange, y, dragRange, trackHeight);
                         }
                     }
@@ -361,7 +369,7 @@ public class MashupController {
 //            System.out.println("Average bpm: " + bpm);
 //            bpm = Math.round(bpm * 1) / 1;
 //            System.out.println("Exporting at " + bpm);
-//            mixer.createCorrectedAudioFx(bpm, new TimingCorrector.CorrectionListener() {
+//            mixer.createCorrectedAudioFx(bpm, new TempoCorrector.CorrectionListener() {
 //                @Override
 //                public void onCorrected(AudioFile audioFile) {
 //                    AudioUtility.writeToFile(audioFile, new AudioFormat(mixer.audio.getSampleRate(), mixer.audio.getBytesPerSmp() * 8, audioFile.getChannels(), true, false), file);

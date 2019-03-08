@@ -15,7 +15,7 @@ public class AudioFile {
         this.data = data;
     }
 
-    public int getLength() {
+    public int getLengthInSamples() {
         return data[0].length;
     }
 

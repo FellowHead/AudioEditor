@@ -11,14 +11,14 @@ import me.fellowhead.audioeditor.mashup.MashupController;
 import java.io.IOException;
 
 public class Main extends Application {
-    public static void main(String args[]) {
+    public static void main(String... args) {
         launch(args);
     }
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        //startStuff(primaryStage,"corrector/markereditor.fxml","Tempo Corrector").setOnKeyPressed(event -> CorrectorController.instance.handleKey(event));
-        startStuff(primaryStage,"mashup/mashupeditor.fxml","Mashup Mixer").setOnKeyPressed(event -> MashupController.instance.handleKey(event));
+        startStuff(primaryStage,"corrector/markereditor.fxml","Tempo Corrector").setOnKeyPressed(event -> CorrectorController.instance.handleKey(event));
+        //startStuff(primaryStage,"mashup/mashupeditor.fxml","Mashup Mixer").setOnKeyPressed(event -> MashupController.instance.handleKey(event));
     }
 
     private Scene startStuff(Stage stage, String resource, String title) throws IOException {
@@ -28,9 +28,7 @@ public class Main extends Application {
         stage.setScene(scene);
         //primaryStage.setMaximized(true);
         stage.show();
-        stage.setOnCloseRequest(windowEvent -> {
-            System.exit(0);
-        });
+        stage.setOnCloseRequest(windowEvent -> System.exit(0));
         return scene;
     }
 }

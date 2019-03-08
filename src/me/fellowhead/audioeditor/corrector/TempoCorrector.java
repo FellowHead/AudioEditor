@@ -5,6 +5,7 @@ import me.fellowhead.audioeditor.AudioFile;
 import me.fellowhead.audioeditor.AudioIOListener;
 import me.fellowhead.audioeditor.AudioUtility;
 import me.fellowhead.audioeditor.ReferenceAudioFile;
+import me.fellowhead.audioeditor.mashup.AdvancedTime;
 import me.fellowhead.io.docs.Property;
 
 import javax.sound.sampled.UnsupportedAudioFileException;
@@ -13,7 +14,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Random;
 
-public class TimingCorrector {
+public class TempoCorrector {
     public ReferenceAudioFile audio;
     private ArrayList<BeatMarker> markers = new ArrayList<>();
 
@@ -43,7 +44,7 @@ public class TimingCorrector {
         }
     }
 
-    private BeatMarker getPrevious(BeatMarker ref) {
+    private BeatMarker getPreceding(BeatMarker ref) {
         sort();
         int index = markers.indexOf(ref) - 1;
         if (index < 0) {
@@ -53,7 +54,7 @@ public class TimingCorrector {
     }
 
     public void setRelativeBeats(BeatMarker ref, int beats) {
-        BeatMarker prev = getPrevious(ref);
+        BeatMarker prev = getPreceding(ref);
         if (prev != null) {
             ref.setBeats(prev.getBeats() + beats);
         } else {
@@ -62,8 +63,8 @@ public class TimingCorrector {
         sort();
     }
 
-    public int getRelativeBeats(BeatMarker ref) {
-        BeatMarker prev = getPrevious(ref);
+    public double getRelativeBeats(BeatMarker ref) {
+        BeatMarker prev = getPreceding(ref);
         if (prev != null) {
             return ref.getBeats() - prev.getBeats();
         }
@@ -78,36 +79,80 @@ public class TimingCorrector {
         return res / markers.size();
     }
 
+    private BeatMarker getPseudoMarker() {
+        sort();
+        BeatMarker last = markers.get(markers.size()-1);
+        BeatMarker bm = new BeatMarker(audio.getLengthInSamples());
+        double bpm = calcBpm(markers.get(markers.size()-2), last, audio.getSampleRate());
+        bm.setBeats(last.getBeats()
+                + new AdvancedTime(audio.getLengthInSamples() - last.getSamplePos(), bpm, audio.getSampleRate()).beats);
+        return bm;
+    }
+
     public interface CorrectionListener extends AudioIOListener {
         void onCorrected(AudioFile file);
     }
 
-    public void createCorrectedAudioFx(double bpm, CorrectionListener listener) {
+    private void writeExport(long smpA, long smpB, int posA, int posB, float[][] src, float[][] res) throws UnsupportedAudioFileException {
+        float blend = 1000;
+        for (int ch = 0; ch < audio.getChannels(); ch++) {
+            float[] stretched = AudioUtility.stretch(src[ch], (int) audio.getSampleRate(),  (smpB - smpA) / ((double) posB - posA));
+            for (int j = 0; j < stretched.length; j++) {
+                int pos = posA + j;
+                float value = stretched[j];
+                if (j < blend) {
+                    value = res[ch][pos] + (j / blend) * (stretched[j] - res[ch][pos]);
+                }
+
+                res[ch][pos] = value;
+            }
+        }
+    }
+
+    public void createCorrectedAudioFx(double bpm, boolean keepAfterLast, CorrectionListener listener) {
         Task task = new Task<Boolean>() {
             @Override
             protected Boolean call() throws Exception {
+                int count = markers.size();
+                if (keepAfterLast) {
+                    count++;
+                }
                 sort();
-                float[][] res = new float[audio.getChannels()][(int) (audio.getSampleRate() * 60.0 * (markers.get(markers.size()-1).getBeats() - markers.get(0).getBeats()) / bpm)];
+                long length;
+                if (!keepAfterLast) {
+                    length = new AdvancedTime(markers.get(markers.size()-1).getBeats() - markers.get(0).getBeats(), bpm, audio.getSampleRate()).absolute();
+                } else {
+                    length = new AdvancedTime(getPseudoMarker().getBeats() - markers.get(0).getBeats(), bpm, audio.getSampleRate()).absolute();
+                }
+                float[][] res = new float[audio.getChannels()][(int) length];
                 for (int i = 1; i < markers.size(); i++) {
-                    for (int ch = 0; ch < audio.getChannels(); ch++) {
-                        BeatMarker a = markers.get(i - 1);
-                        BeatMarker b = markers.get(i);
-                        int posA = (int) (audio.getSampleRate() * 60.0 * a.getBeats() / bpm);
-                        int posB = (int) (audio.getSampleRate() * 60.0 * b.getBeats() / bpm);
+                    BeatMarker a = markers.get(i - 1);
+                    BeatMarker b = markers.get(i);
+                    int posA = (int) new AdvancedTime(a.getBeats(), bpm, audio.getSampleRate()).absolute();
+                    int posB = (int) new AdvancedTime(b.getBeats(), bpm, audio.getSampleRate()).absolute();
 
-                        float[] src = new float[(int) (b.getSamplePos() - a.getSamplePos() + 2000)];
-                        for (int j = 0; j < src.length; j++) {
-                            src[j] = audio.getData()[ch][(int) (j + a.getSamplePos())];
-                        }
-                        float[] stretched = AudioUtility.stretch(src, (int) audio.getSampleRate(), (double) (b.getSamplePos() - a.getSamplePos()) / (posB - posA));
-                        for (int j = 0; j < stretched.length; j++) {
-                            int pos = posA + j;
-                            if (pos < res[ch].length) {
-                                res[ch][pos] = stretched[j];
-                            }
+                    float[][] src = new float[audio.getChannels()][(int) (b.getSamplePos() - a.getSamplePos() + 2000)];
+                    for (int ch = 0; ch < audio.getChannels(); ch++) {
+                        for (int j = 0; j < src[0].length; j++) {
+                            src[ch][j] = audio.getData()[ch][(int) (j + a.getSamplePos())];
                         }
                     }
-                    updateProgress(i, markers.size());
+                    writeExport(a.getSamplePos(), b.getSamplePos(), posA, posB, src, res);
+                    updateProgress(i, count);
+                }
+                if (keepAfterLast) {
+                    BeatMarker last = markers.get(markers.size() - 1);
+                    int posA = (int) new AdvancedTime(last.getBeats(), bpm, audio.getSampleRate()).absolute();
+                    int posB = (int) new AdvancedTime(getPseudoMarker().getBeats(), bpm, audio.getSampleRate()).absolute();
+
+                    float[][] src = new float[audio.getChannels()][(int) (audio.getData()[0].length - last.getSamplePos())];
+                    for (int ch = 0; ch < audio.getChannels(); ch++) {
+                        for (int j = 0; j < src[0].length; j++) {
+                            src[ch][j] = audio.getData()[ch][(int) (j + last.getSamplePos())];
+                        }
+                    }
+                    writeExport(last.getSamplePos(), audio.getLengthInSamples(), posA, posB, src, res);
+                    updateProgress(count - 1, count);
                 }
 
 //        Random rnd = new Random();
@@ -213,7 +258,7 @@ public class TimingCorrector {
     //not really a click track
     public long[] getClickTrack(long sampleOff) {
         if (markers.size() == 0) {
-//            long[] res = new long[(int) ((audio.getLength() / audio.getSampleRate()) * (targetBpm / 60.0))];
+//            long[] res = new long[(int) ((audio.getLengthInSamples() / audio.getSampleRate()) * (targetBpm / 60.0))];
 //            for (int i = 0; i < res.length; i++) {
 //                res[i] = (long) (i * (audio.getSampleRate() / (targetBpm / 60)));
 //            }
@@ -236,7 +281,7 @@ public class TimingCorrector {
         BeatMarker a = markers.get(markers.size()-2);
         BeatMarker b = markers.get(markers.size()-1);
         double targetBpm = calcBpm(a, b, audio.getSampleRate());
-        for (int i = 0; i < ((audio.getLength() - markers.get(markers.size()-1).getSamplePos()) / audio.getSampleRate()) * (targetBpm / 60.0); i++) {
+        for (int i = 0; i < ((audio.getLengthInSamples() - markers.get(markers.size()-1).getSamplePos()) / audio.getSampleRate()) * (targetBpm / 60.0); i++) {
             list.add((long) (i * (audio.getSampleRate() / (targetBpm / 60)) + markers.get(markers.size()-1).getSamplePos()) - sampleOff);
         }
 
@@ -269,7 +314,7 @@ public class TimingCorrector {
         return out;
     }
 
-    public TimingCorrector(ReferenceAudioFile file) {
+    public TempoCorrector(ReferenceAudioFile file) {
         this.audio = file;
     }
 

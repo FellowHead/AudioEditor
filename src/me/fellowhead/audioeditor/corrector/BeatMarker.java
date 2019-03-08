@@ -1,12 +1,13 @@
 package me.fellowhead.audioeditor.corrector;
 
+import me.fellowhead.audioeditor.mashup.BeatTime;
 import me.fellowhead.io.docs.PropHolder;
 import me.fellowhead.io.docs.Property;
 import me.fellowhead.io.docs.Savable;
 
 public class BeatMarker extends Savable implements Comparable<BeatMarker> {
     private long samplePos;
-    private int beats;
+    private double beats;
 
     public long getSamplePos() {
         return samplePos;
@@ -16,11 +17,11 @@ public class BeatMarker extends Savable implements Comparable<BeatMarker> {
         this.samplePos = samplePos;
     }
 
-    public int getBeats() {
+    public double getBeats() {
         return beats;
     }
 
-    public void setBeats(int beats) {
+    public void setBeats(double beats) {
         this.beats = beats;
     }
 
